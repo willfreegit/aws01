@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creates an EC2 Ubuntu instance in an existing VPC and subnet.
+
+Parameters:
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instance.
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Must be the name of an existing EC2 KeyPair.
+
+Resources:
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-053b0d53c279e6024 # This is a common Ubuntu Server 22.04 LTS (HVM), SSD Volume Type in us-east-1.
+                                   # Always verify the latest AMI for your region: https://cloud-images.ubuntu.com/locator/
+      InstanceType: t2.micro        # You can change this to a different instance type if needed
+      KeyName: !Ref KeyName
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          AssociatePublicIpAddress: true
+          GroupSet:
+            - !GetAtt InstanceSecurityGroup.GroupId
+          SubnetId:
+            Fn::ImportValue: PublicSubnetId # Assuming you export PublicSubnetId from your VPC CloudFormation stack
+      Tags:
+        - Key: Name
+          Value: MyUbuntuInstance
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          echo "Hello from CloudFormation!"
+          apt update -y
+          apt install -y apache2
+          systemctl start apache2
+          systemctl enable apache2
+
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH access and HTTP access to the instance
+      VpcId:
+        Fn::ImportValue: MainVPCId # Assuming you export MainVPCId from your VPC CloudFormation stack
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0 # WARNING: This allows SSH from anywhere. Restrict this to your IP for production.
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0 # Allows HTTP from anywhere
+
+Outputs:
+  InstanceId:
+    Description: The Instance ID of the newly created EC2 instance.
+    Value: !Ref EC2Instance
+  PublicIp:
+    Description: The Public IP address of the newly created EC2 instance.
+    Value: !GetAtt EC2Instance.PublicIp
